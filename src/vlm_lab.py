@@ -62,9 +62,13 @@ def load_model(setup):
 
     q = BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True, llm_int8_skip_modules=["visual", "lm_head"])
+        bnb_4bit_use_double_quant=True, llm_int8_skip_modules=["model.visual", "visual", "lm_head"])
     model = Qwen3VLForConditionalGeneration.from_pretrained(
         MODEL_ID, quantization_config=q, dtype=torch.float16, device_map={"": 0})
+    bad = [n for n, m in model.named_modules()
+           if "visual" in n and type(m).__name__ == "Linear4bit"]
+    assert not bad, f"ViT vẫn bị lượng tử hoá 4-bit ({len(bad)} module, vd {bad[0]})"
+    print("[load] ViT giữ fp16 (không Linear4bit)", flush=True)
     processor = AutoProcessor.from_pretrained(MODEL_ID)
     processor.tokenizer.padding_side = "left"
     return model, processor
@@ -96,8 +100,19 @@ def apply_setup(model, setup, r=16):
                 p.requires_grad = True
                 n += p.numel()
         print(f"[setup {setup}] projector params full-trained: {n / 1e6:.1f}M", flush=True)
+    for p in pm.parameters():
+        if p.requires_grad and p.dtype != torch.float32:
+            p.data = p.data.float()  # GradScaler không unscale được gradient fp16
     trainable = sum(p.numel() for p in pm.parameters() if p.requires_grad)
     print(f"[setup {setup}] trainable params: {trainable:,}", flush=True)
+    for n, m in pm.named_modules():
+        if n.endswith(("visual.merger.linear_fc1", "visual.blocks.0.attn.qkv.base_layer",
+                       "visual.deepstack_merger_list.0.linear_fc1")):
+            w = getattr(m, "weight", None)
+            print(f"[diag] {n}: {type(m).__name__} {tuple(w.shape) if w is not None else None} "
+                  f"{w.dtype if w is not None else None}", flush=True)
+    vis = sum(p.numel() for n, p in pm.named_parameters() if ".visual." in n and "lora_" not in n)
+    print(f"[diag] visual params (numel): {vis:,}", flush=True)
     return pm, n_lora, trainable
 
 

@@ -19,7 +19,7 @@ FILES = __FILES__
 RUNS = __RUNS__
 ZIP_URL = "__ZIP_URL__"
 
-ROOT = Path("/kaggle/working/lab")
+ROOT = Path("/tmp/lab")
 for rel, text in FILES.items():
     p = ROOT / rel
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -49,13 +49,14 @@ for run in RUNS:
     print(f"=== {run}: exit {status[run]} sau {(time.time()-t0)/60:.1f} phút", flush=True)
 
 out = Path("/kaggle/working/out")
-out.mkdir(exist_ok=True)
-for src in ["report/evidence", "work", "data/splits"]:
-    d = Path(src)
-    if d.exists():
-        shutil.copytree(d, out / d.name if src != "data/splits" else out / "splits", dirs_exist_ok=True)
+out.mkdir(parents=True, exist_ok=True)
+for src, dst in [("report/evidence", "evidence"), ("data/splits", "splits")]:
+    if Path(src).exists():
+        shutil.copytree(src, out / dst, dirs_exist_ok=True)
+(out / "preds").mkdir(exist_ok=True)
+for f in Path("work").glob("*.jsonl"):
+    shutil.copy(f, out / "preds" / f.name)
 (out / "status.json").write_text(json.dumps(status, indent=2))
-shutil.rmtree("/kaggle/working/lab/data", ignore_errors=True)
 print("XONG", status)
 '''
 
