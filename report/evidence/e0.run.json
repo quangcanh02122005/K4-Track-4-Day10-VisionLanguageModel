@@ -1,0 +1,8 @@
+{
+  "name": "e0",
+  "setup": "zeroshot",
+  "r": 16,
+  "fraction": 1.0,
+  "coord": "norm1000",
+  "max_steps": 300
+}
