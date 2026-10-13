@@ -36,6 +36,7 @@ def sh(cmd, check=True):
 sh(["nvidia-smi", "-L"], check=False)
 sh([sys.executable, "-m", "pip", "-q", "install", "transformers==5.19.0", "peft==0.21.2",
     "accelerate==1.15.0", "bitsandbytes==0.50.2", "pyyaml", "pillow"])
+sh([sys.executable, "-m", "pip", "-q", "uninstall", "-y", "torchao"], check=False)
 sh([sys.executable, "scripts/prepare_data.py", "--zip", ZIP_URL])
 
 status = {}
