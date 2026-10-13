@@ -9,9 +9,9 @@ Họ tên: Đào Quang Cảnh
 | E1 | LoRA LLM | 33,030,144 | 6.384 | 41.61 | 0.277 | [0.242, 0.316] | 1.244 | 0.167 | 0.223 | 0.518 |
 | E2 | + projector | 142,135,296 | 8.078 | 42.56 | 0.325 | [0.285, 0.369] | 1.106 | 0.145 | 0.261 | 0.605 |
 | E3 | + LoRA ViT | 148,426,752 | 8.255 | 56.88 | 0.447 | [0.406, 0.488] | 0.875 | 0.345 | 0.371 | 0.688 |
-| E4 | data_size=0.1 (10% dữ liệu train, setup E3) | 148,426,752 | — | — | — | — | — | — | — | — |
+| E4 | data_size=0.1 (10% train data) | 148,426,752 | 7.704 | 52.72 | 0.322 | [0.283, 0.362] | 1.473 | 0.196 | 0.225 | 0.639 |
 
-> **Ghi chú E4**: Biến thay đổi là `fraction = 0.1` (chỉ dùng 10% ảnh train ≈ 142 ảnh), giữ nguyên toàn bộ setup E3 (LoRA LLM + projector + LoRA ViT, r=16). Thực nghiệm E4 chưa chạy trên Kaggle do giới hạn GPU quota; kết quả sẽ được bổ sung khi có.
+> **Ghi chú E4**: Biến thay đổi là `fraction = 0.1` (chỉ dùng 10% ảnh train ≈ 142 ảnh), giữ nguyên toàn bộ setup E3 (LoRA LLM + projector + LoRA ViT, r=16, 300 steps). Huấn luyện mất 52.72 phút, VRAM đỉnh 7.704 GB. F1 micro đạt 0.322 (giảm 0.125 so với E3 đầy đủ 0.447).
 
 ## 10 câu hỏi (trả lời bằng **số của bạn**, không chép lại tài liệu)
 
@@ -130,15 +130,21 @@ Với 311 ảnh test, CI95 rộng ~0.08 (±4 điểm F1). Điều này có nghĩ
 
 ### Câu 10 — E4: bạn đổi biến nào, kết quả thế nào, và kết luận có đáng tin không?
 
-**Biến thay đổi**: `data_size = 0.1` — chỉ dùng 10% dữ liệu train (≈ 142 ảnh thay vì 1422), giữ nguyên E3 setup (LoRA LLM + projector + LoRA ViT, r=16, 300 steps).
+**Biến thay đổi**: `data_size = 0.1` (`fraction = 0.1`) — chỉ dùng 10% dữ liệu train (142 ảnh thay vì 1422), giữ nguyên mọi tham số và kiến trúc của E3 (LoRA LLM + projector + LoRA ViT, r=16, lr=2e-4, max_steps=300).
 
-**Kỳ vọng kết quả**: F1 sẽ thấp hơn đáng kể so với E3 (0.447), có thể về mức 0.25–0.35. Lý do:
-- Với 142 ảnh train, số bước thực tế đủ để overfit trên tập nhỏ nhưng generalization kém.
-- LoRA ViT cần nhiều mẫu đa dạng để học visual features hữu ích; với 10% data, ViT LoRA có thể không hội tụ đủ.
+**Kết quả thực tế (từ `report/evidence/e4.json` & `e4.run.json`):**
+- **F1 micro tổng**: giảm từ **0.447** (E3) xuống **0.322** (E4) — mức giảm rất lớn (**Δ = -0.125**).
+- **CI95**: [0.283, 0.362] cho E4 so với [0.406, 0.488] cho E3. Hai khoảng tin cậy này **hoàn toàn tách biệt, không hề chồng lấp**.
+- **Từng lớp**: 
+  - Pothole: F1 giảm từ 0.345 xuống **0.196**
+  - Crack: F1 giảm từ 0.371 xuống **0.225**
+  - Manhole: F1 giảm từ 0.688 xuống **0.639** (ít chịu ảnh hưởng nhất do đặc trưng nhận diện rõ ràng)
+- **Hành vi mô hình & Loss curve**:
+  - Do chỉ có 142 ảnh nhưng chạy tới 300 steps (batch 2, grad accum 4 = 8 ảnh/step, tương đương ~17 epoch trên tập con 142 ảnh), mô hình đã bị **overfitting cực nặng**: train loss giảm từ 2.128 ở bước 1 xuống tận ~0.002 - 0.005 ở 10 bước cuối (gần như ghi nhớ toàn bộ tập train).
+  - FP/ảnh tăng từ 0.875 (E3) lên **1.473** (E4) do mô hình sinh box quá đà (hallucination) trên tập test lạ.
 
-**Kết luận về độ tin cậy**: Với tập test 311 ảnh (CI95 rộng ~0.08), kết luận so sánh E4 vs E3 **chỉ đáng tin nếu Δ F1 > 0.1**. Nếu E4 F1 ≈ 0.30 thì khoảng cách với E3 (0.447) là 0.147 — đủ để kết luận rằng data augmentation/kích thước dữ liệu quan trọng với LoRA ViT. Tuy nhiên, nếu E4 ≈ 0.37–0.40 thì cần xem xét CI95 cẩn thận hơn.
-
-*(Kết quả E4 sẽ được bổ sung sau khi chạy trên Kaggle)*
+**Kết luận về độ tin cậy:**
+Kết luận rằng **"kích thước dữ liệu đầy đủ đóng vai trò quyết định hiệu năng của toàn bộ pipeline LoRA ViT + LLM"** là **hoàn toàn đáng tin và có ý nghĩa thống kê** vì mức giảm Δ F1 = 0.125 vượt xa biên độ lỗi, và CI95 của E4 và E3 hoàn toàn không giao nhau. Khi giảm 90% dữ liệu, LoRA ViT không nhận được đủ đa dạng mẫu mặt đường để khái quát hoá và nhanh chóng ghi nhớ tập train nhỏ.
 
 ## Nhìn lại
 
